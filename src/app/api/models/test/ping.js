@@ -53,16 +53,9 @@ async function getInternalHeaders() {
 export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`) {
   const headers = await getInternalHeaders();
   const start = Date.now();
-  
-  // Extract provider from model string (e.g., "codebuddy/glm-4.7" -> "codebuddy")
-  // Or detect CodeBuddy models by model ID prefix (e.g., "claude-sonnet-4.6", "glm-4.7-ioa")
+
   const provider = model.includes("/") ? model.split("/")[0] : "";
-  // CodeBuddy models: model ID contains known patterns
-  const isCodeBuddyModel = ["codebuddy"].includes(provider) || 
-    model.includes("-ioa") || 
-    model.startsWith("claude-") || 
-    model.startsWith("gemini-") || 
-    model.startsWith("gpt-");
+  const isCodeBuddyModel = ["cb", "codebuddy"].includes(provider);
   const requiresStreaming = isCodeBuddyModel;
 
   if (kind === "embedding") {
