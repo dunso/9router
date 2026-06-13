@@ -87,7 +87,7 @@ export class DefaultExecutor extends BaseExecutor {
       return `${normalized}/messages`;
     }
     // CodeBuddy: use base_url from credentials (may be SSO domain)
-    if (this.provider === "codebuddy") {
+    if (this.provider === "codebuddy" || this.provider === "cb") {
       const psd = credentials?.providerSpecificData || {};
       // Use stored base_url, or construct from domain
       let baseUrl = psd.base_url;
@@ -187,7 +187,7 @@ export class DefaultExecutor extends BaseExecutor {
         } else if (this.provider === "gitlab") {
           // GitLab Duo uses Bearer token (PAT with ai_features scope, or OAuth access token)
           headers["Authorization"] = `Bearer ${credentials.apiKey || credentials.accessToken}`;
-        } else if (this.provider === "codebuddy") {
+        } else if (this.provider === "codebuddy" || this.provider === "cb") {
           const accessToken = credentials.apiKey || credentials.accessToken;
           
           // Get providerSpecificData (matching claude-api-proxy structure)
@@ -239,6 +239,18 @@ export class DefaultExecutor extends BaseExecutor {
           const conversationRequestId = this._generateCompactId();
           const conversationMessageId = this._generateCompactId();
           const requestId = this._generateCompactId();
+          
+          // Strip cb/ or codebuddy/ prefix from model name for CodeBuddy API
+          // CodeBuddy API only needs the model name (e.g., "glm-5.1"), not "cb/glm-5.1" or "codebuddy/glm-5.1"
+          if (body && typeof body === 'object' && body.model) {
+            if (body.model.startsWith('cb/')) {
+              body.model = body.model.slice(3);
+              console.log(`[CodeBuddy] Stripped cb/ prefix from model: ${body.model}`);
+            } else if (body.model.startsWith('codebuddy/')) {
+              body.model = body.model.slice(10);
+              console.log(`[CodeBuddy] Stripped codebuddy/ prefix from model: ${body.model}`);
+            }
+          }
           
           // DEBUG: Log CodeBuddy request details
           console.log(`[CodeBuddy] Request URL: ${baseUrl}/v2/chat/completions`);

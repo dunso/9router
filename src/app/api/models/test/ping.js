@@ -53,6 +53,17 @@ async function getInternalHeaders() {
 export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`) {
   const headers = await getInternalHeaders();
   const start = Date.now();
+  
+  // Extract provider from model string (e.g., "codebuddy/glm-4.7" -> "codebuddy")
+  // Or detect CodeBuddy models by model ID prefix (e.g., "claude-sonnet-4.6", "glm-4.7-ioa")
+  const provider = model.includes("/") ? model.split("/")[0] : "";
+  // CodeBuddy models: model ID contains known patterns
+  const isCodeBuddyModel = ["codebuddy"].includes(provider) || 
+    model.includes("-ioa") || 
+    model.startsWith("claude-") || 
+    model.startsWith("gemini-") || 
+    model.startsWith("gpt-");
+  const requiresStreaming = isCodeBuddyModel;
 
   if (kind === "embedding") {
     const res = await fetch(`${baseUrl}/api/v1/embeddings`, {
@@ -136,16 +147,36 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
     body: JSON.stringify({
       model,
       max_tokens: 1,
-      stream: false,
+      stream: requiresStreaming ? true : false,
       messages: [{ role: "user", content: "hi" }],
     }),
     signal: AbortSignal.timeout(15000),
   });
   const latencyMs = Date.now() - start;
 
+  // For streaming responses (like CodeBuddy), parse SSE data to check for choices
   const rawText = await res.text().catch(() => "");
   let parsed = null;
-  try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+  let hasStreamChoices = false;
+  
+  // Check if response is streaming (SSE format)
+  if (requiresStreaming && rawText.includes("data: {")) {
+    // Parse SSE stream to find choices
+    const lines = rawText.split("\n");
+    for (const line of lines) {
+      if (line.startsWith("data: ") && line !== "data: [DONE]") {
+        try {
+          const data = JSON.parse(line.slice(6));
+          if (data.choices && data.choices.length > 0) {
+            hasStreamChoices = true;
+            break;
+          }
+        } catch {}
+      }
+    }
+  } else {
+    try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+  }
 
   if (!res.ok) {
     const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
@@ -177,8 +208,9 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
     };
   }
 
+  // Check for choices: either in parsed JSON or in streaming response
   const hasChoices = Array.isArray(parsed?.choices) && parsed.choices.length > 0;
-  if (!hasChoices) {
+  if (!hasChoices && !hasStreamChoices) {
     return {
       ok: false,
       latencyMs,

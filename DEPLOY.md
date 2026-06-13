@@ -93,3 +93,43 @@ npm install
 1. **Standalone 模式**：Next.js standalone 模式不会自动服务静态资源，部署脚本会自动复制 `_next/static` 和 `public/`
 2. **浏览器缓存**：更新代码后建议使用 `Cmd+Shift+R` (Mac) 或 `Ctrl+Shift+R` (Windows) 强制刷新
 3. **Node.js 版本**：better-sqlite3 需要与当前 Node.js 版本匹配，如遇问题执行 `npm rebuild`
+
+## 开发环境
+
+### 项目目录
+
+```
+/tmp/9router-build
+```
+
+### 使用 WebStorm 打开
+
+1. File → Open
+2. 选择 `/tmp/9router-build`
+3. 点击 Open
+
+### 数据库位置
+
+```
+~/.9router/db/data.sqlite
+```
+
+### 关键目录结构
+
+```
+/tmp/9router-build/
+├── src/                    # Next.js 源代码
+│   ├── app/               # Next.js App Router
+│   ├── lib/               # 工具库
+│   │   ├── oauth/         # OAuth 相关
+│   │   └── ...
+│   └── sse/               # SSE 相关
+├── open-sse/              # Open SSE 执行器
+│   ├── executors/         # 执行器实现
+│   ├── handlers/          # 请求处理器
+│   └── config/            # 配置文件
+├── docs/                  # 文档
+├── DEPLOY.md              # 部署指南（本文件）
+├── package.json
+└── tsconfig.json
+```

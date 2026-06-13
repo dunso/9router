@@ -1358,6 +1358,8 @@ const PROVIDERS = {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
         expiresIn: tokens.expires_in || 86400,
+        // Email for connection display name (used by createProviderConnection)
+        email: payload.email || payload.preferred_username || "",
         // Store ALL fields matching claude-api-proxy's tenant_credentials structure
         providerSpecificData: {
           // Core token fields
