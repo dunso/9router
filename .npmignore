@@ -25,7 +25,16 @@ postcss.config.mjs
 next.config.mjs
 tsconfig.json
 
-# Build artifacts that shouldn't be published
+# Build artifacts - users build themselves
+.next/
 .next/cache/
+.next/standalone/
 .next/standalone/data/
 
+# node_modules - MUST exclude for npm publish
+node_modules/
+**/node_modules/
+
+# Other large files
+*.log
+.DS_Store

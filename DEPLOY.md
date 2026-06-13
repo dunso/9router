@@ -133,3 +133,26 @@ npm install
 ├── package.json
 └── tsconfig.json
 ```
+
+## 发布到 tnpm
+
+### 安装 tnpm
+
+```bash
+npm install -g @tencent/tnpm --registry=http://r.tnpm.oa.com
+tnpm adduser
+```
+
+### 发布新版本
+
+```bash
+cd /tmp/9router-build
+npm run build
+npm --no-git-tag-version version patch && tnpm publish
+```
+
+### 安装发布版本
+
+```bash
+npm install -g @tencent/9router --registry=http://r.tnpm.oa.com
+```
