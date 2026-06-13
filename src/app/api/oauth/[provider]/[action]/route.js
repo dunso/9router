@@ -142,12 +142,15 @@ export async function GET(request, { params }) {
       const startUrl = searchParams.get("start_url");
       const region = searchParams.get("region");
       const authMethod = searchParams.get("auth_method");
+      const baseUrl = searchParams.get("baseUrl");
       const deviceOptions = provider === "kiro"
         ? {
             ...(startUrl ? { startUrl } : {}),
             ...(region ? { region } : {}),
             ...(authMethod ? { authMethod } : {}),
           }
+        : provider === "codebuddy"
+        ? { baseUrl }
         : undefined;
       
       // Providers that don't use PKCE for device code
@@ -264,7 +267,9 @@ export async function POST(request, { params }) {
     }
 
     if (action === "poll") {
-      const { deviceCode, codeVerifier, extraData } = body;
+      const { deviceCode, codeVerifier, extraData, baseUrl } = body;
+
+      console.log("[OAuth poll] provider:", provider, "baseUrl:", baseUrl, "deviceCode:", deviceCode?.substring(0, 20) + "...");
 
       if (!deviceCode) {
         return NextResponse.json({ error: "Missing device code" }, { status: 400 });
@@ -274,7 +279,11 @@ export async function POST(request, { params }) {
       const noPkceProviders = ["github", "kimi-coding", "kilocode", "codebuddy"];
       let result;
       if (noPkceProviders.includes(provider)) {
-        result = await pollForToken(provider, deviceCode);
+        // For CodeBuddy, pass baseUrl as _baseUrl in deviceData
+        const deviceData = provider === "codebuddy" ? { _baseUrl: baseUrl } : {};
+        console.log("[OAuth poll] CodeBuddy deviceData:", JSON.stringify(deviceData));
+        result = await pollForToken(provider, deviceCode, undefined, undefined, deviceData);
+        console.log("[OAuth poll] pollForToken result:", JSON.stringify(result));
       } else if (provider === "kiro") {
         // Kiro needs extraData (clientId, clientSecret) from device code response
         result = await pollForToken(provider, deviceCode, null, extraData);

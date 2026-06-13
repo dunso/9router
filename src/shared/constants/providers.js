@@ -8,7 +8,6 @@ export const FREE_PROVIDERS = {
   // qwen: { id: "qwen", alias: "qw", name: "Qwen Code", icon: "psychology", color: "#10B981", mediaPriority: 999, deprecated: true, deprecationNotice: "Qwen OAuth free tier was discontinued by Alibaba on 2026-04-15. New connections will not work.", website: "https://chat.qwen.ai", notice: { signupUrl: "https://chat.qwen.ai" }, serviceKinds: ["llm", "tts"], ttsConfig: { baseUrl: "http://localhost:8000/v1/audio/speech", authType: "none", authHeader: "none", format: "openai", models: [{ id: "qwen3-tts", name: "Qwen3 TTS" }] } },
   "gemini-cli": { id: "gemini-cli", alias: "gc", name: "Gemini CLI", icon: "terminal", color: "#4285F4", deprecated: true, deprecationNotice: RISK_NOTICE, website: "https://github.com/google-gemini/gemini-cli", notice: { signupUrl: "https://github.com/google-gemini/gemini-cli" } },
   // gitlab: { id: "gitlab", alias: "gl", name: "GitLab Duo", icon: "code", color: "#FC6D26" },
-  // codebuddy: { id: "codebuddy", alias: "cb", name: "CodeBuddy", icon: "smart_toy", color: "#006EFF" },
   qoder: { id: "qoder", alias: "qd", name: "Qoder", icon: "water_drop", color: "#EC4899", deprecated: true, deprecationNotice: RISK_NOTICE, website: "https://qoder.com", notice: { signupUrl: "https://qoder.com" } },
   // iflow: { id: "iflow", alias: "if", name: "iFlow AI", icon: "water_drop", color: "#6366F1", website: "https://iflow.cn", notice: { signupUrl: "https://iflow.cn" } },
   opencode: { id: "opencode", alias: "oc", name: "OpenCode Free", icon: "terminal", color: "#E87040", textIcon: "OC", noAuth: true, passthroughModels: true, modelsFetcher: { url: "https://opencode.ai/zen/v1/models", type: "opencode-free" } },
@@ -65,6 +64,10 @@ export const OAUTH_PROVIDERS = {
   // "kimi-coding": { id: "kimi-coding", alias: "kmc", name: "Kimi Coding", icon: "psychology", color: "#1E40AF", textIcon: "KC" },
   kilocode: { id: "kilocode", alias: "kc", name: "Kilo Code", icon: "code", color: "#FF6B35", textIcon: "KC", website: "https://kilocode.ai", notice: { signupUrl: "https://kilocode.ai" } },
   cline: { id: "cline", alias: "cl", name: "Cline", icon: "smart_toy", color: "#5B9BD5", textIcon: "CL", website: "https://cline.bot", notice: { signupUrl: "https://cline.bot" } },
+  codebuddy: { id: "codebuddy", alias: "cb", name: "CodeBuddy", icon: "smart_toy", color: "#006EFF", textIcon: "CB", website: "https://codebuddy.cn", notice: { signupUrl: "https://codebuddy.cn" }, baseUrlOptions: [
+    { id: "personal", label: "个人版", url: "https://copilot.tencent.com", default: true },
+    { id: "enterprise-sso", label: "企业 SSO 版", url: "https://tencent.sso.codebuddy.cn" },
+  ] },
   // opencode: { id: "opencode", alias: "oc", name: "OpenCode", icon: "terminal", color: "#E87040", textIcon: "OC" },
 };
 

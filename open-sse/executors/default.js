@@ -9,6 +9,37 @@ import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
     super(provider, PROVIDERS[provider] || PROVIDERS.openai);
+    // Generate conversation ID once per executor instance
+    this._conversationId = this._generateUUID();
+  }
+
+  // Generate UUID without dashes (compact)
+  _generateCompactId() {
+    if (typeof crypto !== "undefined" && crypto.randomBytes) {
+      return crypto.randomBytes(16).toString("hex");
+    }
+    // Fallback for environments without crypto
+    let str = "";
+    for (let i = 0; i < 32; i++) {
+      str += Math.floor(Math.random() * 16).toString(16);
+    }
+    return str;
+  }
+
+  // Generate standard UUID
+  _generateUUID() {
+    if (typeof crypto !== "undefined" && crypto.randomBytes) {
+      const bytes = crypto.randomBytes(16);
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = bytes.toString("hex");
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+    }
+    // Fallback
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+    });
   }
 
   transformRequest(model, body) {
@@ -55,6 +86,21 @@ export class DefaultExecutor extends BaseExecutor {
       const normalized = baseUrl.replace(/\/$/, "");
       return `${normalized}/messages`;
     }
+    // CodeBuddy: use base_url from credentials (may be SSO domain)
+    if (this.provider === "codebuddy") {
+      const psd = credentials?.providerSpecificData || {};
+      // Use stored base_url, or construct from domain
+      let baseUrl = psd.base_url;
+      if (!baseUrl && psd.domain) {
+        baseUrl = `https://${psd.domain}`;
+      }
+      if (!baseUrl) {
+        baseUrl = "https://copilot.tencent.com";
+      }
+      // Remove trailing slash and add path
+      const normalized = baseUrl.replace(/\/$/, "");
+      return `${normalized}/v2/chat/completions`;
+    }
     switch (this.provider) {
       case "claude":
       case "glm":
@@ -78,7 +124,7 @@ export class DefaultExecutor extends BaseExecutor {
     }
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials, stream = true, body = null) {
     const headers = { "Content-Type": "application/json", ...this.config.headers };
 
     switch (this.provider) {
@@ -142,7 +188,118 @@ export class DefaultExecutor extends BaseExecutor {
           // GitLab Duo uses Bearer token (PAT with ai_features scope, or OAuth access token)
           headers["Authorization"] = `Bearer ${credentials.apiKey || credentials.accessToken}`;
         } else if (this.provider === "codebuddy") {
-          headers["Authorization"] = `Bearer ${credentials.apiKey || credentials.accessToken}`;
+          const accessToken = credentials.apiKey || credentials.accessToken;
+          
+          // Get providerSpecificData (matching claude-api-proxy structure)
+          const psd = credentials.providerSpecificData || {};
+          
+          // Get userId from providerSpecificData (matching claude-api-proxy: user_id field)
+          const userId = psd.user_id || psd.userId || "";
+          
+          // Get base_url from providerSpecificData (matching claude-api-proxy)
+          // For SSO tokens, we need to use the SSO domain as baseUrl
+          let baseUrl = psd.base_url || credentials.providerSpecificData?.baseUrl || "https://copilot.tencent.com";
+          
+          // Check if this is an SSO token (from sso.codebuddy.cn)
+          // If so, we need to use the SSO domain for API calls
+          if (psd.domain && psd.domain.includes("sso.codebuddy.cn")) {
+            baseUrl = `https://${psd.domain}`;
+          }
+          
+          const host = new URL(baseUrl).host;
+          
+          // Get enterprise_id for enterprise accounts
+          // Try from stored data first, then extract from JWT
+          let enterpriseId = psd.enterprise_id || "";
+          
+          // Extract enterprise_id from JWT if not stored
+          if (!enterpriseId && accessToken) {
+            try {
+              const parts = accessToken.split(".");
+              if (parts.length === 3) {
+                const padded = parts[1] + "===".slice(0, (4 - parts[1].length % 4) % 4);
+                const jwtPayload = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+                if (jwtPayload.realm_access?.roles) {
+                  const entMemberRole = jwtPayload.realm_access.roles.find(r => r.startsWith('ent-member:'));
+                  if (entMemberRole) {
+                    enterpriseId = entMemberRole.split(':')[1];
+                    console.log(`[CodeBuddy] Extracted enterpriseId from JWT: ${enterpriseId}`);
+                  }
+                }
+              }
+            } catch {}
+          }
+          
+          // Check if this is a personal host (no enterprise headers needed)
+          const personalHosts = ['copilot.tencent.com', 'www.codebuddy.ai'];
+          const isPersonal = personalHosts.includes(host);
+          
+          // Generate conversation IDs for cache key
+          const conversationId = this._conversationId || this._generateId();
+          const conversationRequestId = this._generateCompactId();
+          const conversationMessageId = this._generateCompactId();
+          const requestId = this._generateCompactId();
+          
+          // DEBUG: Log CodeBuddy request details
+          console.log(`[CodeBuddy] Request URL: ${baseUrl}/v2/chat/completions`);
+          console.log(`[CodeBuddy] host: ${host}`);
+          console.log(`[CodeBuddy] userId: ${userId}`);
+          console.log(`[CodeBuddy] enterpriseId: ${enterpriseId || '(personal account)'}`);
+          console.log(`[CodeBuddy] isPersonal: ${isPersonal}`);
+          console.log(`[CodeBuddy] conversationId: ${conversationId}`);
+          console.log(`[CodeBuddy] body model: ${body.model}`);
+          console.log(`[CodeBuddy] body keys: ${Object.keys(body).join(", ")}`);
+          console.log(`[CodeBuddy] body.stream: ${body.stream}`);
+          // Ensure stream is true for CodeBuddy (required)
+          if (body && typeof body === 'object' && body.stream !== true) {
+            body.stream = true;
+            console.log(`[CodeBuddy] Set body.stream = true`);
+          }
+          
+          // Build CodeBuddy headers (matching claude-api-proxy exactly)
+          headers["Host"] = host;
+          headers["Accept"] = "application/json";
+          headers["Content-Type"] = "application/json";
+          headers["Authorization"] = `Bearer ${accessToken}`;
+          headers["X-Requested-With"] = "XMLHttpRequest";
+          // Use the domain from JWT or the host
+          headers["X-Domain"] = psd.domain || host;
+          headers["User-Agent"] = `CLI/2.93.1 CodeBuddy/2.93.1`;
+          headers["X-Product"] = "SaaS";
+          headers["X-User-Id"] = userId;
+          headers["X-Session-ID"] = userId;
+          headers["X-Agent-Intent"] = "craft";
+          headers["X-IDE-Type"] = "CLI";
+          headers["X-IDE-Name"] = "CLI";
+          headers["X-IDE-Version"] = "2.93.1";
+          headers["x-stainless-arch"] = process?.arch === "arm64" ? "arm64" : "amd64";
+          headers["x-stainless-lang"] = "js";
+          headers["x-stainless-os"] = process?.platform || "unknown";
+          headers["x-stainless-package-version"] = "6.25.0";
+          headers["x-stainless-retry-count"] = "0";
+          headers["x-stainless-runtime"] = "node";
+          headers["x-stainless-runtime-version"] = process?.version || "unknown";
+          
+          // Enterprise headers (for enterprise/SO accounts)
+          if (!isPersonal && enterpriseId) {
+            headers["X-Enterprise-Id"] = enterpriseId;
+            headers["X-Tenant-Id"] = enterpriseId;
+            console.log(`[CodeBuddy] Adding enterprise headers: X-Enterprise-Id=${enterpriseId}`);
+            if (psd.department_info) {
+              headers["X-Department-Info"] = psd.department_info;
+            }
+          }
+          
+          // Conversation tracking headers (required for cache)
+          headers["X-Conversation-ID"] = conversationId;
+          headers["X-Conversation-Request-ID"] = conversationRequestId;
+          headers["X-Conversation-Message-ID"] = conversationMessageId;
+          headers["X-Request-ID"] = requestId;
+          
+          // Add prompt_cache_key for better caching (body is passed as parameter)
+          if (body && typeof body === 'object' && !body.prompt_cache_key && conversationId) {
+            body.prompt_cache_key = conversationId;
+          }
         } else if (this.provider === "kilocode") {
           headers["Authorization"] = `Bearer ${credentials.apiKey || credentials.accessToken}`;
           if (credentials.providerSpecificData?.orgId) {

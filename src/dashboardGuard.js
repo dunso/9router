@@ -239,5 +239,46 @@ export async function proxy(request) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
+  // Serve static files from public directory (i18n, providers icons, etc.)
+  if (pathname.startsWith("/i18n/") || pathname.startsWith("/providers/") || pathname.startsWith("/literals/")) {
+    const fs = await import("fs");
+    const path = await import("path");
+    const publicDir = path.join(process.cwd(), "public");
+    const filePath = path.join(publicDir, pathname.slice(1));
+    
+    try {
+      await fs.promises.access(filePath);
+      const fileContents = await fs.promises.readFile(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      
+      const mimeTypes = {
+        ".json": "application/json",
+        ".png": "image/png",
+        ".svg": "image/svg+xml",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".ico": "image/x-icon",
+        ".woff": "font/woff",
+        ".woff2": "font/woff2",
+        ".ttf": "font/ttf",
+        ".eot": "application/vnd.ms-fontobject",
+      };
+      
+      const contentType = mimeTypes[ext] || "application/octet-stream";
+      
+      return new NextResponse(fileContents, {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      });
+    } catch {
+      return NextResponse.next();
+    }
+  }
+
   return NextResponse.next();
 }

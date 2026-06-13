@@ -11,13 +11,14 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
  * - Remote: Manual paste callback URL
  */
 export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, onClose, oauthMeta, idcConfig }) {
-  const [step, setStep] = useState("waiting"); // waiting | input | success | error
+  const [step, setStep] = useState("waiting"); // waiting | input | success | error | selecting
   const [authData, setAuthData] = useState(null);
   const [callbackUrl, setCallbackUrl] = useState("");
   const [error, setError] = useState(null);
   const [isDeviceCode, setIsDeviceCode] = useState(false);
   const [deviceData, setDeviceData] = useState(null);
   const [polling, setPolling] = useState(false);
+  const [baseUrl, setBaseUrl] = useState(null);
   const popupRef = useRef(null);
   const pollingAbortRef = useRef(false);
   const openedRef = useRef(false);
@@ -87,7 +88,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
   }, [authData, onSuccess]);
 
   // Poll for device code token
-  const startPolling = useCallback(async (deviceCode, codeVerifier, interval, extraData, deadlineMs) => {
+  const startPolling = useCallback(async (deviceCode, codeVerifier, interval, extraData, deadlineMs, baseUrlForPoll) => {
     pollingAbortRef.current = false;
     setPolling(true);
     // Honor the upstream's expires_in when supplied (qoder sets 300s) so we
@@ -117,7 +118,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         const res = await fetch(`/api/oauth/${provider}/poll`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ deviceCode, codeVerifier, extraData }),
+          body: JSON.stringify({ deviceCode, codeVerifier, extraData, baseUrl: baseUrlForPoll }),
         });
 
         const data = await res.json();
@@ -128,6 +129,11 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
           setPolling(false);
           onSuccess?.();
           return;
+        }
+
+        // Still pending - continue polling
+        if (data.pending || data.error === "authorization_pending") {
+          continue;
         }
 
         if (data.error === "expired_token" || data.error === "access_denied") {
@@ -156,6 +162,29 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
     try {
       setError(null);
 
+      // Check if provider requires site selection
+      const providerBaseUrlOptions = providerInfo?.baseUrlOptions;
+      if (providerBaseUrlOptions && providerBaseUrlOptions.length > 0) {
+        // If baseUrl not selected yet, show selection UI
+        if (!baseUrl) {
+          setStep("selecting");
+          return;
+        }
+        // Pass selected baseUrl as oauthMeta
+        const mergedMeta = {
+          ...oauthMeta,
+          _baseUrl: baseUrl,
+        };
+        // Also update providerInfo dynamically - we need to find the matching option
+        const selectedOption = providerBaseUrlOptions.find(opt => opt.url === baseUrl);
+        if (selectedOption?.id) {
+          // Store for later use
+        }
+        // Continue with OAuth flow using mergedMeta
+        // Note: We need to pass the mergedMeta to subsequent API calls
+        // For now, just continue - the _baseUrl will be used in the device-code endpoint
+      }
+
       // Device code flow providers
       const deviceCodeProviders = ["github", "qwen", "kiro", "kimi-coding", "kilocode", "codebuddy", "qoder"];
       if (deviceCodeProviders.includes(provider)) {
@@ -163,6 +192,10 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         setStep("waiting");
 
         const deviceCodeUrl = new URL(`/api/oauth/${provider}/device-code`, window.location.origin);
+        // Pass baseUrl if selected
+        if (baseUrl) {
+          deviceCodeUrl.searchParams.set("baseUrl", baseUrl);
+        }
         if (provider === "kiro" && idcConfig?.startUrl) {
           deviceCodeUrl.searchParams.set("start_url", idcConfig.startUrl);
           if (idcConfig.region) {
@@ -208,6 +241,8 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
           Number.isFinite(data.expires_in) && data.expires_in > 0
             ? data.expires_in * 1000
             : undefined,
+          // Pass baseUrl for CodeBuddy SSO
+          baseUrl,
         );
         return;
       }
@@ -306,7 +341,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       setError(err.message);
       setStep("error");
     }
-  }, [provider, isLocalhost, startPolling, oauthMeta, idcConfig]);
+  }, [provider, isLocalhost, startPolling, oauthMeta, idcConfig, baseUrl]);
 
   // Reset state and start OAuth when modal opens
   useEffect(() => {
@@ -320,6 +355,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       setIsDeviceCode(false);
       setDeviceData(null);
       setPolling(false);
+      setBaseUrl(null);
       pollingAbortRef.current = false;
       startOAuthFlow();
     } else if (!isOpen) {
@@ -582,7 +618,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         )}
 
         {/* Device Code Flow - Waiting */}
-        {step === "waiting" && isDeviceCode && deviceData && (
+        {step === "waiting" && isDeviceCode && deviceData && deviceData.user_code && (
           <>
             <div className="text-center py-4">
               <p className="text-sm text-text-muted mb-4">
@@ -630,6 +666,58 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
               </div>
             )}
           </>
+        )}
+
+        {/* Site Selection Step */}
+        {step === "selecting" && providerInfo?.baseUrlOptions && (
+          <div className="space-y-4">
+            <p className="text-sm text-text-muted">
+              Please select which site you want to connect to:
+            </p>
+            <div className="space-y-2">
+              {providerInfo.baseUrlOptions.map((option, index) => (
+                <div
+                  key={option.id}
+                  className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                    baseUrl === option.url
+                      ? "border-primary bg-primary/10"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                  onClick={() => setBaseUrl(option.url)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-sidebar flex items-center justify-center text-xs font-bold text-text-muted">
+                      {index + 1}
+                    </span>
+                    <span className="font-medium">{option.label}</span>
+                    {option.default && (
+                      <span className="text-xs text-text-muted">(Recommended)</span>
+                    )}
+                  </div>
+                  {baseUrl === option.url && (
+                    <div className="mt-1 text-xs text-primary">✓ Selected</div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => {
+                  if (baseUrl) {
+                    setStep("waiting");
+                    startOAuthFlow();
+                  }
+                }}
+                fullWidth
+                disabled={!baseUrl}
+              >
+                Continue
+              </Button>
+              <Button onClick={handleClose} variant="ghost" fullWidth>
+                Cancel
+              </Button>
+            </div>
+          </div>
         )}
 
         {/* Success Step */}

@@ -1290,11 +1290,11 @@ const PROVIDERS = {
       };
     },
     pollToken: async (config, deviceCode) => {
-      const response = await fetch(config.tokenUrl, {
-        method: "POST",
+      // Use GET request with state as URL parameter (matching claude-api-proxy)
+      const response = await fetch(`${config.tokenUrl}?state=${encodeURIComponent(deviceCode)}`, {
+        method: "GET",
         headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
+          Accept: "application/json, text/plain, */*",
           "User-Agent": config.userAgent,
           "X-Requested-With": "XMLHttpRequest",
           "X-Domain": "copilot.tencent.com",
@@ -1302,10 +1302,10 @@ const PROVIDERS = {
           "X-No-User-Id": "true",
           "X-Product": "SaaS",
         },
-        body: JSON.stringify({ state: deviceCode }),
       });
       if (!response.ok) return { ok: false, data: { error: "request_failed" } };
       const data = await response.json();
+      console.log("[CodeBuddy pollToken] response:", JSON.stringify(data, null, 2));
       // code 11217 = pending, code 0 = success
       if (data.code === 0 && data.data?.accessToken) {
         return {
@@ -1314,18 +1314,78 @@ const PROVIDERS = {
             access_token: data.data.accessToken,
             refresh_token: data.data.refreshToken || "",
             token_type: data.data.tokenType || "Bearer",
+            // Pass extra fields from response for mapTokens
+            domain: data.data.domain,
+            scope: data.data.scope,
+            expires_in: data.data.expiresIn,
           },
         };
       }
       if (data.code === 11217) return { ok: true, data: { error: "authorization_pending" } };
       return { ok: false, data: { error: data.msg || "unknown_error" } };
     },
-    mapTokens: (tokens) => ({
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresIn: 86400,
-      providerSpecificData: {},
-    }),
+    mapTokens: (tokens, extra = {}) => {
+      console.log("[CodeBuddy mapTokens] extra:", JSON.stringify(extra, null, 2));
+      
+      // Parse JWT to extract all user info (matching claude-api-proxy)
+      let payload = {};
+      try {
+        const parts = tokens.access_token.split(".");
+        if (parts.length === 3) {
+          const padded = parts[1] + "===".slice(0, (4 - parts[1].length % 4) % 4);
+          payload = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+        }
+      } catch {}
+      
+      // Extract userId from JWT (matching claude-api-proxy: email > preferred_username > sub)
+      const userId = payload.email || payload.preferred_username || payload.sub || "";
+      
+      // Determine baseUrl from extra data or use default
+      const baseUrl = extra.baseUrl || extra._baseUrl || "https://copilot.tencent.com";
+      console.log("[CodeBuddy mapTokens] baseUrl:", baseUrl);
+      
+      // Extract enterprise_id from JWT realm_access.roles if not provided
+      let enterpriseId = extra.enterpriseId || "";
+      if (!enterpriseId && payload.realm_access?.roles) {
+        const entMemberRole = payload.realm_access.roles.find(r => r.startsWith('ent-member:'));
+        if (entMemberRole) {
+          enterpriseId = entMemberRole.split(':')[1];
+        }
+      }
+      console.log("[CodeBuddy mapTokens] enterpriseId:", enterpriseId);
+      
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresIn: tokens.expires_in || 86400,
+        // Store ALL fields matching claude-api-proxy's tenant_credentials structure
+        providerSpecificData: {
+          // Core token fields
+          bearer_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          token_type: tokens.token_type || "Bearer",
+          // User identification
+          user_id: userId,
+          userId,
+          user_info: {
+            sub: payload.sub,
+            email: payload.email,
+            preferred_username: payload.preferred_username,
+            name: payload.name,
+          },
+          // Connection info
+          base_url: baseUrl,
+          // Enterprise fields
+          enterprise_id: enterpriseId,
+          enterprise_name: extra.enterpriseName || "",
+          department_info: extra.departmentFullName || "",
+          domain: extra.domain || payload.iss ? new URL(payload.iss).host : "",
+          scope: payload.scope || "",
+          expires_in: tokens.expires_in || 86400,
+          created_at: Math.floor(Date.now() / 1000),
+        },
+      };
+    },
   },
 };
 
@@ -1418,12 +1478,15 @@ export async function requestDeviceCode(providerName, codeChallenge, options) {
  * @param {string} codeVerifier - PKCE code verifier (optional for some providers)
  * @param {object} extraData - Extra data from device code response (e.g. clientId/clientSecret for Kiro)
  */
-export async function pollForToken(providerName, deviceCode, codeVerifier, extraData) {
+export async function pollForToken(providerName, deviceCode, codeVerifier, extraData, deviceData) {
   const provider = getProvider(providerName);
   if (provider.flowType !== "device_code") {
     throw new Error(`Provider ${providerName} does not support device code flow`);
   }
-
+  
+  // For CodeBuddy, pass baseUrl from deviceData (stored during device-code request)
+  const baseUrl = deviceData?._baseUrl || deviceData?.baseUrl;
+  
   const result = await provider.pollToken(provider.config, deviceCode, codeVerifier, extraData);
 
   if (result.ok) {
@@ -1434,7 +1497,12 @@ export async function pollForToken(providerName, deviceCode, codeVerifier, extra
       if (provider.postExchange) {
         extra = await provider.postExchange(result.data);
       }
-      const tokens = provider.mapTokens(result.data, extra);
+      // Pass baseUrl and deviceData to mapTokens for CodeBuddy
+      const tokens = provider.mapTokens(result.data, {
+        ...extra,
+        baseUrl,
+        _baseUrl: baseUrl,
+      });
       // Kiro IDC/Builder-ID tokens lack profileArn; resolve it to avoid 403
       if (providerName === "kiro" && !tokens.providerSpecificData?.profileArn) {
         const profileArn = await fetchKiroProfileArn(tokens.accessToken);

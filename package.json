@@ -1,8 +1,11 @@
 {
-  "name": "9router-app",
-  "version": "0.4.80",
-  "description": "9Router web dashboard",
-  "private": true,
+  "name": "@tencent/9router",
+  "version": "0.5.0",
+  "description": "9Router web dashboard with CodeBuddy OAuth support",
+  "private": false,
+  "publishConfig": {
+    "registry": "http://r.tnpm.oa.com"
+  },
   "scripts": {
     "dev": "next dev --webpack --port 20128",
     "build": "next build --webpack",
@@ -10,6 +13,12 @@
     "dev:bun": "bun --bun next dev --webpack --port 20128",
     "build:bun": "bun --bun next build --webpack",
     "start:bun": "bun ./.next/standalone/server.js",
+    "deploy": "bash scripts/deploy.sh deploy",
+    "deploy:build": "bash scripts/deploy.sh build",
+    "deploy:start": "bash scripts/deploy.sh start",
+    "deploy:stop": "bash scripts/stop.sh",
+    "deploy:stop:3000": "bash scripts/stop.sh 3000",
+    "deploy:clean": "bash scripts/deploy.sh clean",
     "cli:pack": "npm --prefix cli run pack:cli",
     "cli:publish": "npm --prefix cli run publish:cli"
   },
@@ -46,7 +55,7 @@
     "zustand": "^5.0.10"
   },
   "optionalDependencies": {
-    "better-sqlite3": "^12.6.2"
+    "better-sqlite3": "^12.10.0"
   },
   "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools — sql.js is used as fallback at runtime",
   "devDependencies": {

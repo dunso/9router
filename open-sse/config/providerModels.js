@@ -226,6 +226,18 @@ export const PROVIDER_MODELS = {
     { id: "kwaipilot/kat-coder-pro", name: "KAT Coder Pro" },
   ],
 
+  cb: [  // CodeBuddy
+    { id: "glm-5v-turbo", name: "GLM-5v-Turbo" },
+    { id: "glm-5.1", name: "GLM-5.1" },
+    { id: "glm-5.0-turbo", name: "GLM-5.0-Turbo" },
+    { id: "glm-4.7", name: "GLM-4.7" },
+    { id: "minimax-m2.7", name: "MiniMax M2.7" },
+    { id: "kimi-k2.6", name: "Kimi K2.6" },
+    { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+    { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
+    { id: "deepseek-v3-2-volc", name: "DeepSeek V3.2" },
+  ],
+
   // API Key Providers (alias = id)
   openai: [
     // Flagship models
@@ -914,6 +926,7 @@ const OAUTH_ALIASES = {
   "mimo-free": "mmf",
   vertex: "vertex",
   "vertex-partner": "vertex-partner",
+  codebuddy: "cb",
 };
 
 // Derived from PROVIDERS — no need to maintain manually
