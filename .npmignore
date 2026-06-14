@@ -3,7 +3,7 @@ data/
 **/data/
 **/db.json
 
-# Development
+# Development (but keep cli/)
 src/
 docs/
 test/
@@ -38,3 +38,6 @@ node_modules/
 # Other large files
 *.log
 .DS_Store
+
+# CLI specific (will be in cli/ package)
+!cli/

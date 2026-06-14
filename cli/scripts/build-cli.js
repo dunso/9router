@@ -133,16 +133,43 @@ console.log("✅ Cleaned\n");
 // Step 3: Copy Next.js standalone build to app/cli/app.
 // Newer Next.js standalone output writes server.js/package.json plus .next/, src/, and
 // node_modules/ directly under .next/standalone. Older builds may still use a nested app/.
+// Next.js 16.2+ may also output to .next/standalone/<package-name>/
 console.log("3️⃣  Copying Next.js standalone build to app/cli/app...");
 const standaloneRoot = path.join(appDir, ".next", "standalone");
 const standaloneRootResolved = path.join(buildDistDir, "standalone");
 const standaloneRootToUse = fs.existsSync(standaloneRootResolved) ? standaloneRootResolved : standaloneRoot;
-const standaloneApp = fs.existsSync(path.join(standaloneRootToUse, "server.js"))
-  ? standaloneRootToUse
-  : path.join(standaloneRootToUse, "app");
-if (!fs.existsSync(standaloneApp)) {
+
+// Find standalone app directory - could be at root, in "app" subfolder, or in package-name subfolder
+let standaloneApp = null;
+const possiblePaths = [
+  standaloneRootToUse,  // Direct: .next/standalone/server.js
+  path.join(standaloneRootToUse, "app"),  // Nested: .next/standalone/app/server.js
+];
+
+// Also check for package-name subfolder (Next.js 16.2+ behavior)
+if (fs.existsSync(standaloneRootToUse)) {
+  const entries = fs.readdirSync(standaloneRootToUse, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isDirectory() && !entry.name.startsWith(".")) {
+      const pkgServerJs = path.join(standaloneRootToUse, entry.name, "server.js");
+      if (fs.existsSync(pkgServerJs)) {
+        possiblePaths.push(path.join(standaloneRootToUse, entry.name));
+      }
+    }
+  }
+}
+
+for (const p of possiblePaths) {
+  if (fs.existsSync(path.join(p, "server.js"))) {
+    standaloneApp = p;
+    break;
+  }
+}
+
+if (!standaloneApp) {
   console.error("❌ Next.js standalone build not found under .next/standalone");
-  console.error("Expected either .next/standalone/server.js or .next/standalone/app/");
+  console.error("Expected either .next/standalone/server.js, .next/standalone/app/, or .next/standalone/<package-name>/");
+  console.error("Available directories:", fs.existsSync(standaloneRootToUse) ? fs.readdirSync(standaloneRootToUse) : "N/A");
   process.exit(1);
 }
 copyRecursive(standaloneApp, cliAppDir);
