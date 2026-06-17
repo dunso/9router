@@ -64,10 +64,13 @@ npm run deploy:stop:3000
 
 ```bash
 # 开发模式
+npm install
 npm run dev
 
 # 生产构建
-npm run build
+npm install
+npm run build && npx next start --port 20128
+
 
 # 清理 node_modules 后重新安装
 rm -rf node_modules package-lock.json
@@ -169,10 +172,12 @@ npm install
 cd /tmp/9router-build
 
 # 1.1 构建主项目（生成 .next/standalone/）
+npm install
 npm run build
 
 # 1.2 构建 CLI 包（复制 standalone 到 cli/app/）
 cd cli
+npm install
 npm run build
 ```
 
@@ -212,7 +217,7 @@ cd /tmp/9router-build/cli
 npm adduser --registry=https://mirrors.tencent.com/npm/
 
 # 3.2 发布 CLI 包
-npm publish --registry=https://mirrors.tencent.com/npm/
+npm --no-git-tag-version version patch && npm publish --registry=https://mirrors.tencent.com/npm/
 ```
 
 **注意事项：**
