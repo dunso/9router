@@ -160,6 +160,11 @@ export function parseModel(modelStr) {
     return { provider: null, model: null, isAlias: false, providerAlias: null };
   }
 
+  // Strip "custom-local:" prefix added by CodeBuddy clients
+  if (modelStr.startsWith("custom-local:")) {
+    modelStr = modelStr.slice("custom-local:".length);
+  }
+
   // Check if standard format: provider/model or alias/model
   if (modelStr.includes("/")) {
     const firstSlash = modelStr.indexOf("/");
